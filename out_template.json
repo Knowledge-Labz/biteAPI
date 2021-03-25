@@ -1,0 +1,8 @@
+{
+    "verb": "create",
+    "long": "-71.23592",
+    "lat": "46.81468",
+    "radius": "2000",
+    "minPrice": "1",
+    "maxPrice": "3"
+}

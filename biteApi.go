@@ -10,12 +10,22 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strconv"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"googlemaps.github.io/maps"
 )
+
+type BiteBody struct {
+	Verb      string  `json:"verb"`
+	Long      float64 `json:"long"`
+	Lat       float64 `json:"lat"`
+	Radius    uint    `json:"radius"`
+	MinPrice  int     `json:"minPrice"`
+	MaxPrice  int     `json:"maxPrice"`
+	PageToken string  `json:"pageToken"`
+	PhotoRef  string  `json:"photoRef"`
+}
 
 var errorLogger = log.New(os.Stderr, "ERROR ", log.Llongfile)
 var apiKey = os.Getenv("API_KEY")
@@ -31,50 +41,41 @@ func main() {
 }
 
 func router(req events.APIGatewayProxyRequest) {
+	log.Println("Top")
 	switch req.HTTPMethod {
 	case "POST":
+		log.Println("router caught")
 		handleRequest(req)
 	default:
+		log.Println("router failed")
+		log.Printf("%s", req.HTTPMethod)
 		clientError(http.StatusMethodNotAllowed)
 	}
 }
 
 func handleRequest(req events.APIGatewayProxyRequest) {
-	verb := req.QueryStringParameters["verb"]
+	var parameters BiteBody
+	body := req.Body
+	json.Unmarshal([]byte(body), &parameters)
+	verb := parameters.Verb
+	log.Printf("Verb is %s", verb)
 	if verb == "create" {
-		handleCreate(req)
+		handleCreate(parameters.Lat, parameters.Long, parameters.Radius, parameters.MinPrice, parameters.MaxPrice)
 	} else if verb == "nextpage" {
-		handleNext(req)
+		handleNext(parameters.PageToken)
 	} else if verb == "photo" {
-		handlePhoto(req)
+		handlePhoto(parameters.PhotoRef)
 	} else {
 		clientError(http.StatusBadRequest)
 	}
 }
 
-func handleCreate(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	lat := req.QueryStringParameters["lat"]
-	long := req.QueryStringParameters["long"]
-	radius, radErr := strconv.ParseUint(req.QueryStringParameters["radius"], 10, 0)
-	check(radErr)
-	minPrice, minPriceErr := strconv.ParseInt(req.QueryStringParameters["minPrice"], 10, 0)
-	check(minPriceErr)
-	maxPrice, maxPriceErr := strconv.ParseInt(req.QueryStringParameters["maxPrice"], 10, 0)
-	check(maxPriceErr)
-	if len(lat) > 0 && len(long) > 0 {
-		float_lat, err := strconv.ParseFloat(lat, 64)
-		check(err)
-		float_long, err := strconv.ParseFloat(long, 64)
-		check(err)
-		biteArray := respondBiteArray(float_lat, float_long, uint(radius), int(minPrice), int(maxPrice))
-		return clientSuccess(biteArray)
-	} else {
-		return clientError(http.StatusBadRequest)
-	}
+func handleCreate(lat, long float64, radius uint, minPrice, maxPrice int) (events.APIGatewayProxyResponse, error) {
+	biteArray := respondBiteArray(lat, long, radius, minPrice, maxPrice)
+	return clientSuccess(biteArray)
 }
 
-func handleNext(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	pagetoken := req.QueryStringParameters["pagetoken"]
+func handleNext(pagetoken string) (events.APIGatewayProxyResponse, error) {
 	if len(pagetoken) > 0 {
 		biteArray := respondNextPage(pagetoken)
 		return clientSuccess(biteArray)
@@ -83,8 +84,7 @@ func handleNext(req events.APIGatewayProxyRequest) (events.APIGatewayProxyRespon
 	}
 }
 
-func handlePhoto(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	photoref := req.QueryStringParameters["photoref"]
+func handlePhoto(photoref string) (events.APIGatewayProxyResponse, error) {
 	if len(photoref) > 0 {
 		photoResponse := respondPhoto(photoref)
 		photo, _ := photoResponse.Image()
@@ -119,6 +119,7 @@ func clientError(status int) (events.APIGatewayProxyResponse, error) {
 func clientSuccess(biteArray maps.PlacesSearchResponse) (events.APIGatewayProxyResponse, error) {
 	jsonBiteArray, err := json.Marshal(biteArray)
 	check(err)
+	log.Println(string(jsonBiteArray))
 	return events.APIGatewayProxyResponse{
 		StatusCode: 200,
 		Body:       string(jsonBiteArray),
@@ -134,13 +135,12 @@ func respondBiteArray(lat float64, long float64, radius uint, minPrice int, maxP
 		Radius:  radius,
 		Type:    maps.PlaceTypeRestaurant,
 		OpenNow: true,
-		RankBy:  maps.RankByDistance,
 	}
 	parseLocation(fmt.Sprintf("%f,%f", lat, long), r)
 	parsePriceLevels(minPrice, maxPrice, r)
 	resp, err := client.NearbySearch(context.Background(), r)
 	check(err)
-	errorLogger.Println(resp)
+	log.Println(resp)
 	return resp
 }
 
