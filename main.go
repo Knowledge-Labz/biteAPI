@@ -40,48 +40,52 @@ func main() {
 	lambda.Start(router)
 }
 
-func router(req events.APIGatewayProxyRequest) {
+func router(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	log.Println("Top")
 	switch req.HTTPMethod {
 	case "POST":
 		log.Println("router caught")
-		handleRequest(req)
+		return handleRequest(req)
 	default:
 		log.Println("router failed")
 		log.Printf("%s", req.HTTPMethod)
-		clientError(http.StatusMethodNotAllowed)
+		return clientError(http.StatusMethodNotAllowed)
 	}
 }
 
-func handleRequest(req events.APIGatewayProxyRequest) {
+func handleRequest(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	var parameters BiteBody
 	body := req.Body
 	json.Unmarshal([]byte(body), &parameters)
 	verb := parameters.Verb
 	log.Printf("Verb is %s", verb)
 	if verb == "create" {
-		handleCreate(parameters.Lat, parameters.Long, parameters.Radius, parameters.MinPrice, parameters.MaxPrice)
+		return handleCreate(parameters.Lat, parameters.Long, parameters.Radius, parameters.MinPrice, parameters.MaxPrice)
 	} else if verb == "nextpage" {
-		handleNext(parameters.PageToken)
+		return handleNext(parameters.PageToken)
 	} else if verb == "photo" {
-		handlePhoto(parameters.PhotoRef)
+		return handlePhoto(parameters.PhotoRef)
 	} else {
-		clientError(http.StatusBadRequest)
+		return clientError(http.StatusBadRequest)
 	}
 }
 
 func handleCreate(lat, long float64, radius uint, minPrice, maxPrice int) (events.APIGatewayProxyResponse, error) {
 	biteArray := respondBiteArray(lat, long, radius, minPrice, maxPrice)
-	return clientSuccess(biteArray)
+	return clientSuccess(biteArray), nil
 }
 
 func handleNext(pagetoken string) (events.APIGatewayProxyResponse, error) {
-	if len(pagetoken) > 0 {
-		biteArray := respondNextPage(pagetoken)
-		return clientSuccess(biteArray)
-	} else {
-		return clientError(http.StatusBadRequest)
-	}
+	biteArray := respondNextPage(pagetoken)
+	jsonBiteArray, err := json.Marshal(biteArray)
+	check(err)
+	log.Println(string(jsonBiteArray))
+	return events.APIGatewayProxyResponse{
+		StatusCode:      http.StatusOK,
+		Headers:         map[string]string{"Content-Type": "application/json"},
+		IsBase64Encoded: false,
+		Body:            string(jsonBiteArray),
+	}, nil
 }
 
 func handlePhoto(photoref string) (events.APIGatewayProxyResponse, error) {
@@ -91,9 +95,12 @@ func handlePhoto(photoref string) (events.APIGatewayProxyResponse, error) {
 		var buff bytes.Buffer
 		png.Encode(&buff, photo)
 		encodedString := base64.StdEncoding.EncodeToString(buff.Bytes())
+		log.Println(encodedString)
 		return events.APIGatewayProxyResponse{
-			StatusCode: 200,
-			Body:       encodedString,
+			StatusCode:      200,
+			Headers:         map[string]string{"Content-Type": "application/json"},
+			IsBase64Encoded: true,
+			Body:            encodedString,
 		}, nil
 	} else {
 		return clientError(http.StatusBadRequest)
@@ -116,14 +123,16 @@ func clientError(status int) (events.APIGatewayProxyResponse, error) {
 	}, nil
 }
 
-func clientSuccess(biteArray maps.PlacesSearchResponse) (events.APIGatewayProxyResponse, error) {
+func clientSuccess(biteArray maps.PlacesSearchResponse) events.APIGatewayProxyResponse {
 	jsonBiteArray, err := json.Marshal(biteArray)
 	check(err)
 	log.Println(string(jsonBiteArray))
 	return events.APIGatewayProxyResponse{
-		StatusCode: 200,
-		Body:       string(jsonBiteArray),
-	}, nil
+		StatusCode:      http.StatusOK,
+		Headers:         map[string]string{"Content-Type": "application/json"},
+		IsBase64Encoded: false,
+		Body:            string(jsonBiteArray),
+	}
 }
 
 func respondBiteArray(lat float64, long float64, radius uint, minPrice int, maxPrice int) maps.PlacesSearchResponse {
@@ -154,7 +163,6 @@ func respondNextPage(pagetoken string) maps.PlacesSearchResponse {
 	}
 	resp, err := client.NearbySearch(context.Background(), r)
 	check(err)
-	errorLogger.Println(resp)
 	return resp
 }
 
@@ -165,10 +173,11 @@ func respondPhoto(photoref string) maps.PlacePhotoResponse {
 	check(err)
 	r := &maps.PlacePhotoRequest{
 		PhotoReference: photoref,
+		MaxHeight:      600,
+		MaxWidth:       600,
 	}
 	resp, respErr := client.PlacePhoto(context.Background(), r)
 	check(respErr)
-	errorLogger.Println(resp)
 	return resp
 }
 
