@@ -77,7 +77,7 @@ func handleNext(pagetoken string) (events.APIGatewayProxyResponse, error) {
 	check(err)
 	return events.APIGatewayProxyResponse{
 		StatusCode:      http.StatusOK,
-		Headers:         map[string]string{"Content-Type": "application/json"},
+		Headers:         map[string]string{"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
 		IsBase64Encoded: false,
 		Body:            string(jsonBiteArray),
 	}, nil
@@ -93,7 +93,7 @@ func handlePhoto(photoref string) (events.APIGatewayProxyResponse, error) {
 		encodedString := base64.StdEncoding.EncodeToString(buff.Bytes())
 		return events.APIGatewayProxyResponse{
 			StatusCode:      200,
-			Headers:         map[string]string{"Content-Type": "application/json"},
+			Headers:         map[string]string{"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
 			IsBase64Encoded: true,
 			Body:            encodedString,
 		}, nil
@@ -123,7 +123,7 @@ func clientSuccess(biteArray maps.PlacesSearchResponse) events.APIGatewayProxyRe
 	check(err)
 	return events.APIGatewayProxyResponse{
 		StatusCode:      http.StatusOK,
-		Headers:         map[string]string{"Content-Type": "application/json"},
+		Headers:         map[string]string{"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
 		IsBase64Encoded: false,
 		Body:            string(jsonBiteArray),
 	}
