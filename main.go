@@ -32,7 +32,7 @@ var apiKey = os.Getenv("API_KEY")
 
 func check(err error) {
 	if err != nil {
-		log.Fatalf("fatal error: %s", err)
+		log.Printf("Caught by check function: %s", err)
 	}
 }
 
@@ -41,13 +41,10 @@ func main() {
 }
 
 func router(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	log.Println("Top")
 	switch req.HTTPMethod {
 	case "POST":
-		log.Println("router caught")
 		return handleRequest(req)
 	default:
-		log.Println("router failed")
 		log.Printf("%s", req.HTTPMethod)
 		return clientError(http.StatusMethodNotAllowed)
 	}
@@ -58,7 +55,6 @@ func handleRequest(req events.APIGatewayProxyRequest) (events.APIGatewayProxyRes
 	body := req.Body
 	json.Unmarshal([]byte(body), &parameters)
 	verb := parameters.Verb
-	log.Printf("Verb is %s", verb)
 	if verb == "create" {
 		return handleCreate(parameters.Lat, parameters.Long, parameters.Radius, parameters.MinPrice, parameters.MaxPrice)
 	} else if verb == "nextpage" {
@@ -79,7 +75,6 @@ func handleNext(pagetoken string) (events.APIGatewayProxyResponse, error) {
 	biteArray := respondNextPage(pagetoken)
 	jsonBiteArray, err := json.Marshal(biteArray)
 	check(err)
-	log.Println(string(jsonBiteArray))
 	return events.APIGatewayProxyResponse{
 		StatusCode:      http.StatusOK,
 		Headers:         map[string]string{"Content-Type": "application/json"},
@@ -91,11 +86,11 @@ func handleNext(pagetoken string) (events.APIGatewayProxyResponse, error) {
 func handlePhoto(photoref string) (events.APIGatewayProxyResponse, error) {
 	if len(photoref) > 0 {
 		photoResponse := respondPhoto(photoref)
-		photo, _ := photoResponse.Image()
+		photo, err := photoResponse.Image()
+		check(err)
 		var buff bytes.Buffer
 		png.Encode(&buff, photo)
 		encodedString := base64.StdEncoding.EncodeToString(buff.Bytes())
-		log.Println(encodedString)
 		return events.APIGatewayProxyResponse{
 			StatusCode:      200,
 			Headers:         map[string]string{"Content-Type": "application/json"},
@@ -108,7 +103,7 @@ func handlePhoto(photoref string) (events.APIGatewayProxyResponse, error) {
 }
 
 func serverError(err error) (events.APIGatewayProxyResponse, error) {
-	errorLogger.Println(err.Error())
+	log.Println(err.Error())
 
 	return events.APIGatewayProxyResponse{
 		StatusCode: http.StatusInternalServerError,
@@ -126,7 +121,6 @@ func clientError(status int) (events.APIGatewayProxyResponse, error) {
 func clientSuccess(biteArray maps.PlacesSearchResponse) events.APIGatewayProxyResponse {
 	jsonBiteArray, err := json.Marshal(biteArray)
 	check(err)
-	log.Println(string(jsonBiteArray))
 	return events.APIGatewayProxyResponse{
 		StatusCode:      http.StatusOK,
 		Headers:         map[string]string{"Content-Type": "application/json"},
