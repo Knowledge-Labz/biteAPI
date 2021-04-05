@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"image/png"
 	"log"
 	"net/http"
 	"os"
@@ -86,16 +85,16 @@ func handleNext(pagetoken string) (events.APIGatewayProxyResponse, error) {
 func handlePhoto(photoref string) (events.APIGatewayProxyResponse, error) {
 	if len(photoref) > 0 {
 		photoResponse := respondPhoto(photoref)
-		photo, err := photoResponse.Image()
+		buf := new(bytes.Buffer)
+		buf.ReadFrom(photoResponse.Data)
+		err := photoResponse.Data.Close()
 		check(err)
-		var buff bytes.Buffer
-		png.Encode(&buff, photo)
-		encodedString := base64.StdEncoding.EncodeToString(buff.Bytes())
+		encodedPhoto := base64.StdEncoding.EncodeToString([]byte(buf.String()))
 		return events.APIGatewayProxyResponse{
 			StatusCode:      200,
 			Headers:         map[string]string{"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
 			IsBase64Encoded: true,
-			Body:            encodedString,
+			Body:            encodedPhoto,
 		}, nil
 	} else {
 		return clientError(http.StatusBadRequest)
@@ -106,15 +105,19 @@ func serverError(err error) (events.APIGatewayProxyResponse, error) {
 	log.Println(err.Error())
 
 	return events.APIGatewayProxyResponse{
-		StatusCode: http.StatusInternalServerError,
-		Body:       http.StatusText(http.StatusInternalServerError),
+		StatusCode:      http.StatusInternalServerError,
+		Headers:         map[string]string{"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
+		IsBase64Encoded: false,
+		Body:            http.StatusText(http.StatusInternalServerError),
 	}, nil
 }
 
 func clientError(status int) (events.APIGatewayProxyResponse, error) {
 	return events.APIGatewayProxyResponse{
-		StatusCode: status,
-		Body:       http.StatusText(status),
+		StatusCode:      status,
+		Headers:         map[string]string{"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
+		IsBase64Encoded: false,
+		Body:            http.StatusText(status),
 	}, nil
 }
 
@@ -167,8 +170,8 @@ func respondPhoto(photoref string) maps.PlacePhotoResponse {
 	check(err)
 	r := &maps.PlacePhotoRequest{
 		PhotoReference: photoref,
-		MaxHeight:      600,
-		MaxWidth:       600,
+		MaxHeight:      6000,
+		MaxWidth:       6000,
 	}
 	resp, respErr := client.PlacePhoto(context.Background(), r)
 	check(respErr)
